@@ -1,10 +1,9 @@
-LIBS=-lucp -luct -lucs -lmpi
+LIBS=-lucp -luct -lucs -lmpi -lpthread
 
-test : test.cc ucxctrl.o
-	g++ $^ -o $@ $(LIBS)
+default : put_bench rand_put_bench
+
+% : %.cc ucxctrl.o
+	g++ -O3 -fopenmp $^ -o $@ $(LIBS)
 
 %.o : %.cc
-	g++ -c $< -o $@
-
-% : %.cc
-	g++ $< -o $@ $(LIBS)
+	g++ -O3 -c $< -o $@
