@@ -17,7 +17,7 @@ struct RemoteMemory {
     void* addr;
 };
 
-struct RKey {
+struct Buffer {
     void* buf;
     size_t size;
 };
@@ -28,21 +28,16 @@ protected:
     std::vector<ucp_ep_h> eps;
     std::thread* th;
     bool end_work;
-    std::vector<std::vector<RemoteMemory>> remote_rkeys;
 
     friend class World;
 public:
-    Worker(int world_size): eps(world_size), th(0), remote_rkeys(world_size) {}
+    Worker(int world_size): eps(world_size), th(0) {}
     ~Worker() {
         this->stop();
     }
     void work();
     void stop();
-};
-
-struct RKeyBuffer {
-    void* buf;
-    size_t size;
+    void get(int target, size_t chunk_idx, size_t offset, void* data, size_t);
 };
 
 class World {
@@ -51,20 +46,28 @@ protected:
     MPI_Comm comm;
     ucp_context_h ctx;
     std::vector<Worker*> workers;
-    std::vector<RKeyBuffer> rkbufs;
+    std::vector<Buffer> rkbufs;
     std::vector<std::vector<RemoteMemory>> remote_rkeys;
 public:
     World(MPI_Comm comm_): comm(comm_) {
         this->init();
+        remote_rkeys.resize(world_size);
         this->connect();
+    }
+    ~World() {
+        for (auto& w: workers) {
+            delete w;
+        }
     }
     void init();
     void newWorker();
     void connect();
-    RKey mmap(void*&, size_t);
+    Buffer mmap(void*&, size_t);
+    void expose(void*&, size_t);
+    Buffer getBlockRkey(int target, int idx);
 };
 /*
-    buf_t mmap(void* &addr, size_t length);
+buf_t mmap(void* &addr, size_t length);
 void exposeMemory(buf_t rkey, void* addr, int target);
 std::vector<rmem_t> peepMemory(int source);
 void yield(int i);

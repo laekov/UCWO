@@ -85,7 +85,7 @@ void World::newWorker() {
     worker->work();
 }
 
-RKey World::mmap(void* &addr, size_t length) {
+Buffer World::mmap(void* &addr, size_t length) {
     ucp_mem_map_params_t mmap_params;
     ucp_mem_h mem_h;
     mmap_params.field_mask = UCP_MEM_MAP_PARAM_FIELD_ADDRESS |
@@ -102,7 +102,7 @@ RKey World::mmap(void* &addr, size_t length) {
     auto status = ucp_mem_map(this->ctx, &mmap_params, &mem_h);
     assert(status == UCS_OK);
 
-    RKey rk;
+    Buffer rk;
     status = ucp_rkey_pack(this->ctx, mem_h, &rk.buf, &rk.size);
     assert(status == UCS_OK);
 
@@ -117,7 +117,8 @@ RKey World::mmap(void* &addr, size_t length) {
 const int rkey_cnk_size = 256 << 10;  // 256K
 
 void World::connect() {
-    RKeyBuffer b0;
+    Buffer b0;
+    b0.buf = 0;
     auto rkey = this->mmap(b0.buf, rkey_cnk_size);
     memcpy(b0.buf, &rkey.size, sizeof(size_t));
     memset((char*)b0.buf + sizeof(size_t), 0, sizeof(size_t));
@@ -140,20 +141,36 @@ void World::connect() {
         }
         MPI_Bcast(rkey_buffer, rkey_buffer_size, MPI_CHAR, i, comm);
         MPI_Bcast(&addr, sizeof(void*), MPI_CHAR, i, comm);
+
+        RemoteMemory rm;
+        rm.addr = addr;
         if (i != rank) {
-            RemoteMemory rm;
             auto status = ucp_ep_rkey_unpack(this->workers[0]->eps[i],
                     rkey_buffer, &rm.rkey);
             assert(status == UCS_OK);
-            rm.addr = addr;
-            remote_rkeys[i].push_back(rm);
             free(rkey_buffer);
-        } else {
-            RemoteMemory rm;
-            rm.addr = b0.buf;
-            remote_rkeys[i].push_back(rm);
         }
+        remote_rkeys[i].push_back(rm);
     }
+}
+
+void Worker::get(int target, size_t chunk_idx, size_t offset, void* data,
+        size_t length) {
+    // TODO: First get and unpack rkey from world if it does not exist
+}
+
+void World::expose(void* &addr, size_t length) {
+    Buffer rkey = this->mmap(addr, length);
+    // TODO: Malloc rkbufs if needed
+    // TODO: Copy rkey to the rkbuf
+    // TODO: Register the address in some local array
+}
+
+Buffer World::getBlockRkey(int target, int idx) {
+    // TODO: Lock
+    // TODO: First look at local buffer (may be fetched by other worker)
+    // TODO: If not exist, fetch from remote process using rkey buffer
+    // TODO: If rkey buffer needs extending, extend it first using worker 0
 }
 
 };
