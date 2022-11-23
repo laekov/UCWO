@@ -174,7 +174,6 @@ void Worker::ensureBlock(int target, int block_idx) {
         assert(status == UCS_OK);
         memcpy(&rm.addr, (char*)rkey_buf.buf + rkey_buf.size, sizeof(size_t));
         this->remote_blocks[target].push_back(rm);
-        fprintf(stderr, "Ensured block %d addr %x\n", i, rm.addr);
     }
 }
 
@@ -262,7 +261,6 @@ void* World::expose(void* addr, size_t length) {
     memcpy(p + sizeof(size_t), &addr, sizeof(size_t));
     memcpy(p + sizeof(size_t) * 2, rkey.buf, rkey.size);
     rkbufs.rbegin()->size += rkey.size + 2 * sizeof(size_t);
-    fprintf(stderr, "Rank %d exposed %x\n", rank, addr);
     // TODO: Register the address in some local array
     return addr;
 }
