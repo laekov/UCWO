@@ -1,4 +1,4 @@
-#include "ucxctrl.hh"
+#include "ucwo.hh"
 #include <stdlib.h>
 #include <unistd.h>
 #include <mpi.h>
@@ -6,36 +6,24 @@
 
 int main() {
     MPI_Init(0, 0);
-    int rank, world_size;
+    int rank;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-    MPI_Comm_size(MPI_COMM_WORLD, &world_size);
-    assert(world_size == 2);
+    UCWO::World world(MPI_COMM_WORLD);
+    char* x;
+    x = (char*)world.expose(0, 1024);
+    x[0] = 0;
+    MPI_Barrier(MPI_COMM_WORLD);
 
-    ucxCtrl::init();
-    ucxCtrl::connect();
+    auto w = world.newWorker();
 
-    void* addr = 0;
-    size_t len = 1024;
-    if (rank == 0) {
-        auto rkb = ucxCtrl::mmap(addr, len);
-
-        int* ptr = (int*)addr;
-        ptr[0] = 111;
-
-        ucxCtrl::exposeMemory(rkb, addr, 1);
-
-        while (ptr[0] == 111) {
-            ucxCtrl::yield();
-        }
-        fprintf(stderr, "Seen %d\n", ptr[0]);
-    } else {
-        auto rm = ucxCtrl::peepMemory(0);
-        int a[10];
-        ucxCtrl::getSync(0, rm, 0, a, sizeof(int));
-        fprintf(stderr, "Fetched %d\n", a[0]);
-        a[0] += 1;
-        ucxCtrl::putSync(0, rm, 0, a, sizeof(int));
+    char data[10];
+    data[0] = 'a' + rank;
+    auto rp = w->put(rank ^ 1, 0, 0, data, 1);
+    while (!x[0]) {
+        w->yield();
     }
-    sleep(1);
+    fprintf(stderr, "Rank %d Got %c\n", rank, x[0]);
+    w->wait(rp);
+
     MPI_Finalize();
 }

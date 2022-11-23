@@ -4,11 +4,15 @@
 
 namespace UCWO {
 
+void Worker::yield() {
+    ucp_worker_progress(this->h);
+}
+
 void Worker::work() {
     this->end_work = 0;
     this->th = new std::thread([=]() {
         while (!this->end_work) {
-            ucp_worker_progress(this->h);
+            yield();
         }
     });
 }
@@ -40,7 +44,7 @@ void World::init() {
     ucp_config_release(config);
 }
 
-void World::newWorker() {
+Worker* World::newWorker() {
     ucp_worker_params_t worker_params;
     memset(&worker_params, 0, sizeof(worker_params));
     worker_params.field_mask  = UCP_WORKER_PARAM_FIELD_THREAD_MODE;
@@ -81,8 +85,10 @@ void World::newWorker() {
             free(peer_addr);
         }
     }
+    worker->world = this;
     workers.push_back(worker);
     worker->work();
+    return worker;
 }
 
 Buffer World::mmap(void* &addr, size_t length) {
@@ -120,10 +126,7 @@ void World::connect() {
     Buffer b0;
     b0.buf = 0;
     auto rkey = this->mmap(b0.buf, rkey_cnk_size);
-    memcpy(b0.buf, &rkey.size, sizeof(size_t));
-    memset((char*)b0.buf + sizeof(size_t), 0, sizeof(size_t));
-    memcpy((char*)b0.buf + sizeof(size_t) * 2, rkey.buf, rkey.size);
-    b0.size = rkey.size + sizeof(size_t) * 2;
+    b0.size = 0;
     this->rkbufs.push_back(b0);
 
     this->newWorker();
@@ -150,27 +153,126 @@ void World::connect() {
             assert(status == UCS_OK);
             free(rkey_buffer);
         }
-        remote_rkeys[i].push_back(rm);
+        remote_blks[i].metakeys.push_back(rm);
     }
 }
 
-void Worker::get(int target, size_t chunk_idx, size_t offset, void* data,
-        size_t length) {
-    // TODO: First get and unpack rkey from world if it does not exist
+void Worker::ensureBlock(int target, int block_idx) {
+    while (this->remote_blocks[target].size() <= block_idx) {
+        int i = this->remote_blocks[target].size();
+        auto rkey_buf = world->getBlockRkey(target, i);
+        RemoteMemory rm;
+        auto status = ucp_ep_rkey_unpack(eps[target], rkey_buf.buf, &rm.rkey);
+        assert(status == UCS_OK);
+        memcpy(&rm.addr, (char*)rkey_buf.buf + rkey_buf.size, sizeof(size_t));
+        this->remote_blocks[target].push_back(rm);
+        fprintf(stderr, "Ensured block %d addr %x\n", i, rm.addr);
+    }
 }
 
-void World::expose(void* &addr, size_t length) {
+static void send_handler(void *request, ucs_status_t status) {
+}
+
+ucs_status_ptr_t Worker::get(int target, size_t block_idx, size_t offset,
+        void* out, size_t length) {
+    this->ensureBlock(target, block_idx);
+    auto mem = this->remote_blocks[target][block_idx];
+    auto request = ucp_get_nb(this->eps[target], out, length,
+            (size_t)mem.addr + offset, mem.rkey, send_handler);
+    return request;
+}
+
+ucs_status_ptr_t Worker::put(int target, size_t block_idx, size_t offset,
+        void* in, size_t length) {
+    this->ensureBlock(target, block_idx);
+    auto mem = this->remote_blocks[target][block_idx];
+    auto request = ucp_put_nb(this->eps[target], in, length,
+            (size_t)mem.addr + offset, mem.rkey, send_handler);
+    return request;
+}
+
+ucs_status_t Worker::wait(ucs_status_ptr_t request) {
+    if (request == NULL) {
+        return UCS_OK;
+    } else if (UCS_PTR_IS_ERR(request)) {
+        return UCS_PTR_STATUS(request);
+    } else {
+        ucs_status_t status;
+        do {
+            ucp_worker_progress(h);
+            status = ucp_request_check_status(request);
+        } while (status == UCS_INPROGRESS);
+        ucp_request_free(request);
+        return status;
+    }
+}
+
+void Worker::getSync(int target, RemoteMemory mem, size_t offset,
+        void* out, size_t size) {
+    auto request = ucp_get_nb(this->eps[target], out, size,
+            (size_t)mem.addr + offset, mem.rkey, send_handler);
+    wait(request);
+}
+
+void RemoteBlocks::extendBlocks(Worker* w, int target) {
+    Buffer rkey;
+    size_t meta[2];
+    w->getSync(target, metakeys[this->rki], this->rko, meta, 2 * sizeof(size_t));
+    assert(meta[1] != -1ull); // assume that there is only one meta block
+    rkey.size = meta[0];
+    rkey.buf = malloc(rkey.size + sizeof(size_t));
+    w->getSync(target, metakeys[this->rki], this->rko + 2 * sizeof(size_t),
+            rkey.buf, rkey.size);
+    // Put address at the end of rkey buffer
+    memcpy((char*)rkey.buf + rkey.size, &meta[1], sizeof(size_t));
+    this->bufs.push_back(rkey);
+    this->rko += rkey.size + 2 * sizeof(size_t);
+}
+
+void* World::expose(void* addr, size_t length) {
     Buffer rkey = this->mmap(addr, length);
-    // TODO: Malloc rkbufs if needed
-    // TODO: Copy rkey to the rkbuf
+    std::lock_guard<std::mutex> lck(rkb_mtx);
+    // Malloc rkbufs if needed 
+    // This seems to be unnccesssary due to the limit of shmem segments
+    Buffer rkbuf = *rkbufs.rbegin();
+    if (rkbuf.size + rkey.size * 2 >= rkey_cnk_size) {
+        Buffer new_rkbuf;
+        new_rkbuf.buf = 0;
+        Buffer new_rk = this->mmap(new_rkbuf.buf, rkey_cnk_size);
+        if (new_rk.size + 2 * sizeof(size_t) +  rkbuf.size > rkey_cnk_size) {
+            fprintf(stderr, "Rkey linked list prolong failed\n");
+            assert(false);
+        }
+        char* p = (char*)rkbuf.buf + rkbuf.size;
+        memcpy(p, &new_rk.size, sizeof(size_t));
+        memset(p + sizeof(size_t), 0xff, sizeof(size_t));
+        memcpy(p + sizeof(size_t) * 2, new_rk.buf, new_rk.size);
+        new_rkbuf.size = 0;
+        rkbufs.push_back(new_rkbuf);
+    }
+    // Copy rkey to the rkbuf
+    char* p = (char*)rkbufs.rbegin()->buf + rkbufs.rbegin()->size;
+    memcpy(p, &rkey.size, sizeof(size_t));
+    // memset(p + sizeof(size_t), 0, sizeof(size_t));
+    memcpy(p + sizeof(size_t), &addr, sizeof(size_t));
+    memcpy(p + sizeof(size_t) * 2, rkey.buf, rkey.size);
+    rkbufs.rbegin()->size += rkey.size + 2 * sizeof(size_t);
+    fprintf(stderr, "Rank %d exposed %x\n", rank, addr);
     // TODO: Register the address in some local array
+    return addr;
 }
 
 Buffer World::getBlockRkey(int target, int idx) {
-    // TODO: Lock
-    // TODO: First look at local buffer (may be fetched by other worker)
-    // TODO: If not exist, fetch from remote process using rkey buffer
-    // TODO: If rkey buffer needs extending, extend it first using worker 0
+    std::lock_guard<std::mutex> lck(remote_blks[target].mtx);
+    while (remote_blks[target].bufs.size() <= idx) {
+        remote_blks[target].extendBlocks(this->workers[0], target);
+    }
+    return remote_blks[target].bufs[idx];
+}
+
+Worker* World::worker(int idx) {
+    assert(idx < workers.size());
+    return workers[idx];
 }
 
 };
