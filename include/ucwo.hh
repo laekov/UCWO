@@ -50,6 +50,7 @@ public:
             int target, size_t block_idx, size_t offset, void* data, size_t);
     void getSync(int target, RemoteMemory, size_t offset, void* out, size_t size);
     ucs_status_t wait(ucs_status_ptr_t request);
+    void flush();
 };
 
 struct RemoteBlocks {
@@ -89,18 +90,6 @@ public:
     Worker* worker(int idx);
     Buffer getBlockRkey(int target, int idx);
 };
-/*
-buf_t mmap(void* &addr, size_t length);
-void exposeMemory(buf_t rkey, void* addr, int target);
-std::vector<rmem_t> peepMemory(int source);
-void yield(int i);
-
-void putSync(int target, rmem_t mem, size_t offset, const void* data, size_t length);
-void putAsync(int target, rmem_t mem, size_t offset, const void* data, size_t length);
-void getSync(int target, rmem_t mem, size_t offset, void* data, size_t length);
-
-void flush();
-*/
 
 };  // namespace UCWO
 

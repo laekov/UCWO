@@ -4,8 +4,16 @@
 
 namespace UCWO {
 
+static void send_handler(void *request, ucs_status_t status) {
+}
+
 void Worker::yield() {
     ucp_worker_progress(this->h);
+}
+
+void Worker::flush() {
+    auto request = ucp_worker_flush_nb(this->h, 0, send_handler);
+    this->wait(request);
 }
 
 void Worker::work() {
@@ -168,9 +176,6 @@ void Worker::ensureBlock(int target, int block_idx) {
         this->remote_blocks[target].push_back(rm);
         fprintf(stderr, "Ensured block %d addr %x\n", i, rm.addr);
     }
-}
-
-static void send_handler(void *request, ucs_status_t status) {
 }
 
 ucs_status_ptr_t Worker::get(int target, size_t block_idx, size_t offset,

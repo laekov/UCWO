@@ -9,9 +9,9 @@
 #include <omp.h>
 #include "timer.hh"
 
-const size_t n = 1 << 20;
+const size_t n = 1 << 22;
 const size_t bs = 64;
-const size_t nt = 10;
+const size_t nt = 100;
 
 int main() {
     MPI_Init(0, 0);
