@@ -23,7 +23,7 @@ int main() {
         w->yield();
     }
     fprintf(stderr, "Rank %d Got %c\n", rank, x[0]);
-    w->wait(rp);
+    rp.wait();
 
     MPI_Finalize();
 }

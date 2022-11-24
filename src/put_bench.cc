@@ -41,7 +41,7 @@ int main() {
         fprintf(stderr, "Starting bench\n");
         for (size_t i = 0; i < nt; ++i) {
             timestamp(tb);
-            worker->wait(worker->put(0, 0, 0, p + i * n, n * sizeof(int)));
+            worker->put(0, 0, 0, p + i * n, n * sizeof(int)).wait();
             timestamp(te);
 
             MPI_Barrier(MPI_COMM_WORLD);

@@ -58,9 +58,8 @@ int main() {
 #pragma omp parallel for num_threads(nth)
             for (int j = 0; j < n / bs; ++j) {
                 int thi = omp_get_thread_num();
-                workers[thi]->wait(workers[thi]->put(0, 0,
-                            x[j] * bs * sizeof(int),
-                            p + i * n + j * bs, bs * sizeof(int)));
+                workers[thi]->put(0, 0, x[j] * bs * sizeof(int),
+                            p + i * n + j * bs, bs * sizeof(int)).wait();
             }
             for (auto& w: workers) {
                 w->flush();

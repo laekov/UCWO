@@ -177,22 +177,22 @@ void Worker::ensureBlock(int target, int block_idx) {
     }
 }
 
-ucs_status_ptr_t Worker::get(int target, size_t block_idx, size_t offset,
+Worker::Request Worker::get(int target, size_t block_idx, size_t offset,
         void* out, size_t length) {
     this->ensureBlock(target, block_idx);
     auto mem = this->remote_blocks[target][block_idx];
     auto request = ucp_get_nb(this->eps[target], out, length,
             (size_t)mem.addr + offset, mem.rkey, send_handler);
-    return request;
+    return Request(this, request);
 }
 
-ucs_status_ptr_t Worker::put(int target, size_t block_idx, size_t offset,
+Worker::Request Worker::put(int target, size_t block_idx, size_t offset,
         void* in, size_t length) {
     this->ensureBlock(target, block_idx);
     auto mem = this->remote_blocks[target][block_idx];
     auto request = ucp_put_nb(this->eps[target], in, length,
             (size_t)mem.addr + offset, mem.rkey, send_handler);
-    return request;
+    return Request(this, request);
 }
 
 ucs_status_t Worker::wait(ucs_status_ptr_t request) {

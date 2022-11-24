@@ -37,6 +37,16 @@ protected:
 protected:
     void ensureBlock(int target, int block_idx);
 public:
+    struct Request {
+        Worker* w;
+        ucs_status_ptr_t r;
+        Request(class Worker* w_, ucs_status_ptr_t r_): w(w_), r(r_) {}
+        inline ucs_status_t wait() {
+            return w->wait(r);
+        }
+    };
+
+public:
     Worker(int world_size): eps(world_size), th(0), remote_blocks(world_size) {}
     ~Worker() {
         this->stop();
@@ -44,9 +54,9 @@ public:
     void work();
     void yield();
     void stop();
-    ucs_status_ptr_t get(
+    Request get(
             int target, size_t block_idx, size_t offset, void* data, size_t);
-    ucs_status_ptr_t put(
+    Request put(
             int target, size_t block_idx, size_t offset, void* data, size_t);
     void getSync(int target, RemoteMemory, size_t offset, void* out, size_t size);
     ucs_status_t wait(ucs_status_ptr_t request);
