@@ -41,6 +41,8 @@ void World::init() {
     ucp_config_t *config;
     auto status = ucp_config_read(NULL, NULL, &config);
     assert(status == UCS_OK);
+    status = ucp_config_modify(config, "PROTO_ENABLE", "y");
+    assert(status == UCS_OK);
 
     ucp_params_t ucp_params;
     memset(&ucp_params, 0, sizeof(ucp_params));
@@ -128,6 +130,15 @@ Buffer World::mmap(void* &addr, size_t length, ucs_memory_type_t memtype) {
     status = ucp_mem_query(mem_h, &mem_attrs);
     assert(status == UCS_OK);
     addr = (void*)mem_attrs.address;
+    /*
+    if (mem_attrs.mem_type == UCS_MEMORY_TYPE_CUDA) {
+        fprintf(stderr, "Mapping cuda memory\n");
+    } else if (mem_attrs.mem_type == UCS_MEMORY_TYPE_HOST) {
+        fprintf(stderr, "Mapping host memory\n");
+    } else if (mem_attrs.mem_type == UCS_MEMORY_TYPE_UNKNOWN) {
+        fprintf(stderr, "Mapping unknown memory\n");
+    }
+    */
     return rk;
 }
 
