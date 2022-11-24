@@ -99,7 +99,7 @@ Worker* World::newWorker() {
     return worker;
 }
 
-Buffer World::mmap(void* &addr, size_t length) {
+Buffer World::mmap(void* &addr, size_t length, ucs_memory_type_t memtype) {
     ucp_mem_map_params_t mmap_params;
     ucp_mem_h mem_h;
     mmap_params.field_mask = UCP_MEM_MAP_PARAM_FIELD_ADDRESS |
@@ -112,7 +112,8 @@ Buffer World::mmap(void* &addr, size_t length) {
     if (!addr) {
         mmap_params.flags |= UCP_MEM_MAP_ALLOCATE;
     }
-    mmap_params.memory_type = UCS_MEMORY_TYPE_HOST;
+    // mmap_params.memory_type = UCS_MEMORY_TYPE_HOST;
+    mmap_params.memory_type = memtype;
     auto status = ucp_mem_map(this->ctx, &mmap_params, &mem_h);
     assert(status == UCS_OK);
 
@@ -121,7 +122,9 @@ Buffer World::mmap(void* &addr, size_t length) {
     assert(status == UCS_OK);
 
     ucp_mem_attr_t mem_attrs;
-    mem_attrs.field_mask = UCP_MEM_ATTR_FIELD_ADDRESS | UCP_MEM_ATTR_FIELD_LENGTH;
+    mem_attrs.field_mask = UCP_MEM_ATTR_FIELD_ADDRESS
+        | UCP_MEM_ATTR_FIELD_LENGTH
+        | UCP_MEM_ATTR_FIELD_MEM_TYPE;
     status = ucp_mem_query(mem_h, &mem_attrs);
     assert(status == UCS_OK);
     addr = (void*)mem_attrs.address;
@@ -133,7 +136,7 @@ const int rkey_cnk_size = 256 << 10;  // 256K
 void World::connect() {
     Buffer b0;
     b0.buf = 0;
-    auto rkey = this->mmap(b0.buf, rkey_cnk_size);
+    auto rkey = this->mmap(b0.buf, rkey_cnk_size, UCS_MEMORY_TYPE_HOST);
     b0.size = 0;
     this->rkbufs.push_back(b0);
 
@@ -233,8 +236,8 @@ void RemoteBlocks::extendBlocks(Worker* w, int target) {
     this->rko += rkey.size + 2 * sizeof(size_t);
 }
 
-void* World::expose(void* addr, size_t length) {
-    Buffer rkey = this->mmap(addr, length);
+void* World::expose(void* addr, size_t length, ucs_memory_type_t memtype) {
+    Buffer rkey = this->mmap(addr, length, memtype);
     std::lock_guard<std::mutex> lck(rkb_mtx);
     // Malloc rkbufs if needed 
     // This seems to be unnccesssary due to the limit of shmem segments
@@ -242,7 +245,7 @@ void* World::expose(void* addr, size_t length) {
     if (rkbuf.size + rkey.size * 2 >= rkey_cnk_size) {
         Buffer new_rkbuf;
         new_rkbuf.buf = 0;
-        Buffer new_rk = this->mmap(new_rkbuf.buf, rkey_cnk_size);
+        Buffer new_rk = this->mmap(new_rkbuf.buf, rkey_cnk_size, UCS_MEMORY_TYPE_HOST);
         if (new_rk.size + 2 * sizeof(size_t) +  rkbuf.size > rkey_cnk_size) {
             fprintf(stderr, "Rkey linked list prolong failed\n");
             assert(false);

@@ -2,6 +2,8 @@ project(UCWO)
 
 cmake_minimum_required(VERSION 3.8)
 
+option("USE_CUDA" "Build CUDA example" ON)
+
 function(add_bin src)
     get_filename_component(bin "${src}" NAME_WE)
     add_executable("${bin}" "")
@@ -32,3 +34,8 @@ target_link_libraries(ucwo mpi ucp uct ucs)
 add_bin("src/put_bench.cc")
 add_bin("src/rand_put_bench.cc")
 add_bin("src/hello.cc")
+
+if(USE_CUDA)
+    enable_language(CUDA)
+    add_bin("src/hello_cuda.cu")
+endif()
