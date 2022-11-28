@@ -24,7 +24,7 @@ int main() {
     UCWO::World world(MPI_COMM_WORLD);
     std::vector<UCWO::Worker*> workers;
     for (int i = 0; i < nth; ++i) {
-        workers.push_back(world.newWorker());
+        workers.push_back(world.newWorker(false));
     }
 
     void* addr = 0;
@@ -34,6 +34,9 @@ int main() {
         MPI_Barrier(MPI_COMM_WORLD);
 
         int* ptr = (int*)addr;
+        for (auto w: workers) {
+            w->work();
+        }
         for (size_t i = 0; i < nt; ++i) {
             MPI_Barrier(MPI_COMM_WORLD);
             fprintf(stderr, "Put %d output %x\n", i, ptr[0]);

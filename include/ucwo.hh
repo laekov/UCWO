@@ -93,7 +93,7 @@ public:
         }
     }
     void init();
-    Worker* newWorker();
+    Worker* newWorker(bool mt=true);
     void connect();
     Buffer mmap(void*&, size_t, ucs_memory_type_t);
     void* expose(void*, size_t, ucs_memory_type_t type=UCS_MEMORY_TYPE_HOST);

@@ -54,11 +54,11 @@ void World::init() {
     ucp_config_release(config);
 }
 
-Worker* World::newWorker() {
+Worker* World::newWorker(bool mt) {
     ucp_worker_params_t worker_params;
     memset(&worker_params, 0, sizeof(worker_params));
     worker_params.field_mask  = UCP_WORKER_PARAM_FIELD_THREAD_MODE;
-    worker_params.thread_mode = UCS_THREAD_MODE_MULTI;
+    worker_params.thread_mode = mt ? UCS_THREAD_MODE_MULTI : UCS_THREAD_MODE_SINGLE;
 
     auto worker = new Worker(world_size);
     auto status = ucp_worker_create(ctx, &worker_params, &worker->h);
@@ -97,7 +97,9 @@ Worker* World::newWorker() {
     }
     worker->world = this;
     workers.push_back(worker);
-    worker->work();
+    if (mt) {
+        worker->work();
+    }
     return worker;
 }
 
