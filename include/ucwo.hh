@@ -54,6 +54,7 @@ public:
     void work();
     void yield();
     void stop();
+    void connect(const std::vector<Buffer>& remote_addrs);
     Request get(
             int target, size_t block_idx, size_t offset, void* data, size_t);
     Request put(
@@ -77,6 +78,7 @@ protected:
     int rank, world_size;
     MPI_Comm comm;
     ucp_context_h ctx;
+    std::vector<Buffer> remote_addrs;
     std::vector<Worker*> workers;
     std::vector<Buffer> rkbufs;
     std::vector<RemoteBlocks> remote_blks;
@@ -91,6 +93,9 @@ public:
         for (auto& w: workers) {
             delete w;
         }
+    }
+    inline int worldSize() {
+        return world_size;
     }
     void init();
     Worker* newWorker(bool mt=true);

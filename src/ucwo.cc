@@ -64,43 +64,31 @@ Worker* World::newWorker(bool mt) {
     auto status = ucp_worker_create(ctx, &worker_params, &worker->h);
     assert(status == UCS_OK);
 
-    ucp_address_t *local_addr;
-    size_t local_addr_len;
-    status = ucp_worker_get_address(worker->h, &local_addr, &local_addr_len);
-    assert(status == UCS_OK);
-
-    ucp_address_t *peer_addr;
-    size_t peer_addr_len;
-    for (int i = 0; i < world_size; ++i) {
-        if (i == rank) {
-            peer_addr = local_addr;
-            peer_addr_len = local_addr_len;
-        }
-        MPI_Bcast(&peer_addr_len, sizeof(size_t), MPI_CHAR, i, comm);
-        if (i != rank) {
-            peer_addr = (ucp_address_t*)malloc(peer_addr_len);
-        }
-        MPI_Bcast(peer_addr, peer_addr_len, MPI_CHAR, i, comm);
-        if (i != rank) {
-            ucp_ep_params_t ep_params;
-            ucs_status_t ep_status   = UCS_OK;
-            ep_params.field_mask     = UCP_EP_PARAM_FIELD_REMOTE_ADDRESS |
-                                       UCP_EP_PARAM_FIELD_ERR_HANDLING_MODE;
-            ep_params.address        = peer_addr;
-            ep_params.err_mode       = UCP_ERR_HANDLING_MODE_NONE;
-
-            auto status = ucp_ep_create(worker->h, &ep_params, &worker->eps[i]);
-            assert(status == UCS_OK);
-
-            free(peer_addr);
-        }
-    }
     worker->world = this;
     workers.push_back(worker);
     if (mt) {
         worker->work();
     }
+    if (this->remote_addrs.size() == world_size) {
+        worker->connect(this->remote_addrs);
+    }
     return worker;
+}
+
+void Worker::connect(const std::vector<Buffer>& remote_addrs) {
+    int world_size = this->world->worldSize();
+    assert(remote_addrs.size() == world_size);
+    for (int i = 0; i < world_size; ++i) {
+        ucp_ep_params_t ep_params;
+        ucs_status_t ep_status   = UCS_OK;
+        ep_params.field_mask     = UCP_EP_PARAM_FIELD_REMOTE_ADDRESS |
+                                   UCP_EP_PARAM_FIELD_ERR_HANDLING_MODE;
+        ep_params.address        = (ucp_address_t*)remote_addrs[i].buf;
+        ep_params.err_mode       = UCP_ERR_HANDLING_MODE_NONE;
+
+        auto status = ucp_ep_create(h, &ep_params, &eps[i]);
+        assert(status == UCS_OK);
+    }
 }
 
 Buffer World::mmap(void* &addr, size_t length, ucs_memory_type_t memtype) {
@@ -153,7 +141,26 @@ void World::connect() {
     b0.size = 0;
     this->rkbufs.push_back(b0);
 
-    this->newWorker();
+    auto worker = this->newWorker();
+    ucp_address_t *local_addr;
+    size_t local_addr_len;
+    auto status = ucp_worker_get_address(worker->h, &local_addr, &local_addr_len);
+    assert(status == UCS_OK);
+    Buffer peer_addr;
+    for (int i = 0; i < world_size; ++i) {
+        if (i == rank) {
+            peer_addr.buf = local_addr;
+            peer_addr.size = local_addr_len;
+        }
+        MPI_Bcast(&peer_addr.size, sizeof(size_t), MPI_CHAR, i, comm);
+        if (i != rank) {
+            peer_addr.buf = (ucp_address_t*)malloc(peer_addr.size);
+        }
+        MPI_Bcast(peer_addr.buf, peer_addr.size, MPI_CHAR, i, comm);
+        this->remote_addrs.push_back(peer_addr);
+    }
+    worker->connect(this->remote_addrs);
+
     for (int i = 0; i < world_size; ++i) {
         void *rkey_buffer, *addr;
         size_t rkey_buffer_size;
@@ -172,7 +179,7 @@ void World::connect() {
         RemoteMemory rm;
         rm.addr = addr;
         if (i != rank) {
-            auto status = ucp_ep_rkey_unpack(this->workers[0]->eps[i],
+            auto status = ucp_ep_rkey_unpack(worker->eps[i],
                     rkey_buffer, &rm.rkey);
             assert(status == UCS_OK);
             free(rkey_buffer);

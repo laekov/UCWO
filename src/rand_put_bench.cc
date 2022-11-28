@@ -12,7 +12,7 @@
 const size_t n = 1 << 20;
 const size_t bs = 64;
 const size_t nt = 10;
-const int nth = 4;
+const int nth = 8;
 
 int main() {
     MPI_Init(0, 0);
@@ -34,9 +34,6 @@ int main() {
         MPI_Barrier(MPI_COMM_WORLD);
 
         int* ptr = (int*)addr;
-        for (auto w: workers) {
-            w->work();
-        }
         for (size_t i = 0; i < nt; ++i) {
             MPI_Barrier(MPI_COMM_WORLD);
             fprintf(stderr, "Put %d output %x\n", i, ptr[0]);
