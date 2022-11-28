@@ -14,7 +14,7 @@ int main() {
     x[0] = 0;
     MPI_Barrier(MPI_COMM_WORLD);
 
-    auto w = world.newWorker();
+    auto w = world.newWorker(false);
 
     char data[10];
     data[0] = 'a' + rank;

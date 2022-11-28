@@ -178,10 +178,10 @@ void World::connect() {
 
         RemoteMemory rm;
         rm.addr = addr;
+        auto status = ucp_ep_rkey_unpack(worker->eps[i],
+                rkey_buffer, &rm.rkey);
+        assert(status == UCS_OK);
         if (i != rank) {
-            auto status = ucp_ep_rkey_unpack(worker->eps[i],
-                    rkey_buffer, &rm.rkey);
-            assert(status == UCS_OK);
             free(rkey_buffer);
         }
         remote_blks[i].metakeys.push_back(rm);
