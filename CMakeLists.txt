@@ -1,6 +1,6 @@
-project(UCWO)
-
 cmake_minimum_required(VERSION 3.8)
+
+project(UCWO)
 
 option("USE_CUDA" "Build CUDA example" ON)
 
@@ -38,4 +38,6 @@ add_bin("src/hello.cc")
 if(USE_CUDA)
     enable_language(CUDA)
     add_bin("src/hello_cuda.cu")
+    add_bin("src/rand_put_cuda.cc")
+    add_bin("src/rand_get_cuda.cc")
 endif()

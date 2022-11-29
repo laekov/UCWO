@@ -30,13 +30,13 @@ int main() {
     void* addr = 0;
     size_t len = n * sizeof(int);
     if (rank == 0) {
-        addr = world.expose(addr, len);
+        addr = world.expose(addr, len, UCS_MEMORY_TYPE_CUDA);
         MPI_Barrier(MPI_COMM_WORLD);
 
-        int* ptr = (int*)addr;
+        // int* ptr = (int*)addr;
         for (size_t i = 0; i < nt; ++i) {
             MPI_Barrier(MPI_COMM_WORLD);
-            fprintf(stderr, "Put %d output %x\n", i, ptr[0]);
+            // fprintf(stderr, "Put %d output %x\n", i, ptr[0]);
         }
     } else {
         int* p = new int[n * nt];
@@ -48,12 +48,12 @@ int main() {
         for (int i = 0; i < n / bs; ++i) {
             x[i] = i;
         }
+        std::random_shuffle(x, x + n / bs);
+
         MPI_Barrier(MPI_COMM_WORLD);
         double tott = 0;
         fprintf(stderr, "Starting bench\n");
         for (size_t i = 0; i < nt; ++i) {
-            std::random_shuffle(x, x + n / bs);
-
             timestamp(tb);
 #pragma omp parallel for num_threads(nth)
             for (int j = 0; j < n / bs; ++j) {

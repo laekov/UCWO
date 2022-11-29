@@ -33,33 +33,29 @@ int main() {
         addr = world.expose(addr, len);
         MPI_Barrier(MPI_COMM_WORLD);
 
-        int* ptr = (int*)addr;
+        // int* ptr = (int*)addr;
         for (size_t i = 0; i < nt; ++i) {
             MPI_Barrier(MPI_COMM_WORLD);
-            fprintf(stderr, "Put %d output %x\n", i, ptr[0]);
+            // fprintf(stderr, "Put %d output %x\n", i, ptr[0]);
         }
     } else {
-        int* p = new int[n * nt];
-        memset(p, 12, n * nt * sizeof(int));
-        for (int i = 0; i < nt; ++i) {
-            p[i * n] = (i + 1) * 16;
-        }
+        void* p = world.expose(0, n * sizeof(int), UCS_MEMORY_TYPE_CUDA);
         int* x = new int[n / bs];
         for (int i = 0; i < n / bs; ++i) {
             x[i] = i;
         }
+        std::random_shuffle(x, x + n / bs);
+
         MPI_Barrier(MPI_COMM_WORLD);
         double tott = 0;
         fprintf(stderr, "Starting bench\n");
         for (size_t i = 0; i < nt; ++i) {
-            std::random_shuffle(x, x + n / bs);
-
             timestamp(tb);
 #pragma omp parallel for num_threads(nth)
             for (int j = 0; j < n / bs; ++j) {
                 int thi = omp_get_thread_num();
-                workers[thi]->put(0, 0, x[j] * bs * sizeof(int),
-                            p + i * n + j * bs, bs * sizeof(int));
+                workers[thi]->get(0, 0, x[j] * bs * sizeof(int),
+                            p + j * bs * sizeof(int), bs * sizeof(int));
             }
             for (auto& w: workers) {
                 w->flush();
