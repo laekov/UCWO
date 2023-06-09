@@ -10,17 +10,26 @@
 #include "timer.hh"
 
 const size_t n = 1 << 20;
-const size_t bs = 64;
 const size_t nt = 10;
-const int nth = 8;
 
-int main() {
+int main(int argc, char* args[]) {
+    size_t bs = 64;
+    if (argc > 1) {
+        bs = atoi(args[1]);
+    }
+    int nth = 8;
+    if (argc > 2) {
+        nth = atoi(args[2]);
+    }
     MPI_Init(0, 0);
     int rank, world_size;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &world_size);
     assert(world_size == 2);
 
+    if (rank == 0) {
+        fprintf(stderr, "bs = %lu, nth = %d\n", bs, nth);
+    }
     UCWO::World world(MPI_COMM_WORLD);
     std::vector<UCWO::Worker*> workers;
     for (int i = 0; i < nth; ++i) {
